@@ -22,8 +22,6 @@ type vector.
 
 type prevector = (int -> R) * int.
 
-(* How do I get this signature to use "prevector" instead of "(int -> t) * int"? *)
-(* Can I use the canon operator for this? *)
 op vclamp (pv: prevector): prevector =
   ((fun i => if 0 <= i < pv.`2 then pv.`1 i else zeror), max 0 pv.`2).
 
