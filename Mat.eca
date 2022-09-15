@@ -1,8 +1,17 @@
+(*
+This theory contains a formalization of vectors and matrices with arbitrary 
+and dynamic size.
+
+Many operations conventionally have requirements on the sizes of their operands.
+Matrix addition, for example, only makes sense if the matrices have the same size.
+The user is responsible for making sure that the parameters are valid.
+Many operators return the empty matrix/vector on malformed input, but not all, 
+so checking the output is not a reliable way to check that the parameters are valid.
+*)
 require import AllCore List Distr DBool.
 
 (* -------------------------------------------------------------------- *)
 require (*--*) Quotient StdOrder Bigalg.
-import StdOrder.IntOrder.
 
 (* -------------------------------------------------------------------- *)
 clone import Ring.ComRing as ZR.
@@ -11,9 +20,7 @@ type R = t.
 
 (* -------------------------------------------------------------------- *)
 clone import Bigalg.BigComRing as Big with theory CR <- ZR proof *.
-import StdBigop.Bigreal.
-import BAdd.
-
+import StdBigop.Bigreal BAdd StdOrder.IntOrder.
 (* -------------------------------------------------------------------- *)
 
 theory Vectors.
@@ -56,7 +63,7 @@ hint simplify offunvK.
 lemma vectorW (P : vector -> bool): 
   (forall pv, P (offunv pv)) => forall v, P v by smt(tofunvK).
 
-(* dimension of the vector *)
+(* Dimension of the vector *)
 op size v = (tofunv v).`2.
 
 lemma nosmt size_ge0 v: 0 <= size v by smt().
@@ -74,7 +81,7 @@ lemma size_offunv f n: size (offunv (f, n)) = max 0 n by rewrite /size /#.
 
 hint simplify size_offunv.
 
-(* getting the i-th element of a vector *)
+(* Getting the i-th element of a vector *)
 op "_.[_]" (v: vector) (i : int) = (tofunv v).`1 i.
 
 lemma offunvE f n (i : int) : 0 <= i < n =>
@@ -92,7 +99,8 @@ qed.
 lemma offunv0E f n (i : int) : !(0 <= i < n) =>
   (offunv (f, n)).[i] = zeror.
 proof.
-move => ioutn. rewrite getv0E /=. smt(max0size). trivial. 
+move => ioutn. 
+rewrite getv0E /= /#. 
 qed.
 
 lemma eq_vectorP (v1 v2 : vector) :
@@ -105,7 +113,7 @@ qed.
 
 (* Special vectors *)
 
-(* constant valued vector of dimension n *)
+(* Constant valued vector of dimension n *)
 op vectc n c = offunv ((fun _ => c), n).
 
 lemma size_vectc n c: size (vectc n c) = max 0 n by done.
@@ -114,7 +122,7 @@ lemma vectcE n c i: 0 <= i < n => (vectc n c).[i] = c by smt(offunvE).
 
 hint simplify size_vectc.
 
-(* zero-vector of dimension n *)
+(* Zero-vector of dimension n *)
 op zerov n = vectc n zeror.
 
 lemma size_zerov n: size (zerov n) = max 0 n by done.
@@ -123,7 +131,7 @@ lemma zerovE n i: (zerov n).[i] = zeror by case (0 <= i < n).
 
 hint simplify size_zerov, zerovE.
 
-(* the unique 0-dimensional vector *)
+(* The unique 0-size vector *)
 op emptyv = zerov 0.
 
 lemma size_emptyv: size emptyv = 0 by done.
@@ -134,72 +142,80 @@ hint simplify size_emptyv, emptyvE.
 
 lemma emptyv_unique v: size v = 0 => v = emptyv.
 proof. 
-move => size_eq; apply eq_vectorP => /#.
+move => size_eq.
+apply eq_vectorP => /#.
 qed.
 
 lemma size_vectc2 n c1 c2: vectc (size (vectc n c1)) c2 = vectc n c2.
 proof.
-case (0 < n) => /> H. rewrite /#. rewrite 2!(emptyv_unique (vectc _ _)) //#.
+case (0 < n) => /> H. 
+- rewrite /#. 
+- rewrite 2!(emptyv_unique (vectc _ _)) /#.
 qed.
 
 lemma size_zerov2 n: zerov (size (zerov n)) = zerov n.
-proof. rewrite /zerov. apply size_vectc2. qed.
+proof. 
+rewrite /zerov. 
+apply size_vectc2. 
+qed.
 
 hint simplify size_vectc2, size_zerov2.
 
 (* Vector addition *)
-(* do I define this for different size vectors? Might simplify things *)
-(* should I use an option type here? *)
 op (+) (v1 v2 : vector) = if size v1 = size v2 then 
   offunv ((fun i => v1.[i] + v2.[i]), size v1) else emptyv.
 
 lemma size_addv v1 v2: size (v1 + v2) = if size v1 = size v2 then size v1 else 0.
 proof.
-rewrite /(+) /=; case (size v1 = size v2) => //=.
+rewrite /(+).
+by case (size v1 = size v2).
 qed.
 
 hint simplify size_addv.
 
 lemma size_addv_neq v1 v2: size v1 <> size v2 => v1 + v2 = emptyv. 
 proof. 
-rewrite /(+) => size_eq. by rewrite size_eq.
+by rewrite /(+) => ->. 
 qed.
 
 lemma getvD (v1 v2 : vector) i :
   size v1 = size v2 => (v1 + v2).[i] = v1.[i] + v2.[i].
 proof.
 move => size_eq.
-case (0 <= i < size v2) => H. rewrite /(+) size_eq /=.
-rewrite offunvE //.
-do! rewrite getv0E /= ?size_eq //=.
-by rewrite addr0.
+case (0 <= i < size v2) => H. 
+- rewrite /(+) size_eq /=.
+  rewrite offunvE //.
+- do 3! rewrite getv0E /= ?size_eq //=.
+  by rewrite addr0.
 qed.
 
-(* addition for some special vectors *)
+(* Addition for some special vectors *)
 lemma addv_emptyl v: emptyv + v = emptyv by apply emptyv_unique. 
 
 lemma addv_emptyr v: v + emptyv = emptyv by apply emptyv_unique => /#.
 
 hint simplify addv_emptyl, addv_emptyr.
 
-(* additive inverse of vector *)
+(* Additive inverse of vector *)
 op [-] (v: vector) = offunv ((fun i => -v.[i]), size v).
 
 lemma getvN (v : vector) i : (-v).[i] = - v.[i].
 proof.
-case: (0 <= i < size v) => bound. by rewrite /([-]) offunvE. 
-do! rewrite getv0E /([-]) //=. rewrite oppr0 //.
+case: (0 <= i < size v) => bound. 
+- by rewrite /([-]) offunvE. 
+- do! rewrite getv0E /([-]) //=. 
+  by rewrite oppr0.
 qed.
 
 lemma nosmt sizeN v: size (-v) = size v by done.
 
 hint simplify getvN, sizeN.
 
-(* simplifications for some special vectors *)
+(* Simplifications for some special vectors *)
 lemma zerovN n: -(zerov n) = zerov n.
 proof.
 apply eq_vectorP => /= i bound.
-rewrite oppr0 //. 
+by rewrite oppr0. 
 qed.
 
 lemma emptyvN: - emptyv = emptyv by apply zerovN.
@@ -211,33 +227,39 @@ lemma addvA: associative Vectors.(+).
 proof.
 move => v1 v2 v3.
 case (size v1 = size v2); first case (size v2 = size v3) => size_eq2 size_eq1.
-apply eq_vectorP => /=.
-rewrite size_eq1 size_eq2 /= => i bound.
-do 4! rewrite getvD /= ?size_eq1 ?size_eq2 //=.
-apply addrA.
-rewrite (size_addv_neq _ v3) //= eq_sym.
-apply emptyv_unique.
-rewrite 2!size_addv size_eq1 size_eq2 //.
-move => size_neq.
-rewrite (size_addv_neq v1 v2) //=.
-apply emptyv_unique.
-rewrite 2!size_addv.
-case (size v2 = size v3) => _. rewrite size_neq //.
-by case (size v1 = 0).
+- apply eq_vectorP => /=.
+  rewrite size_eq1 size_eq2 /= => i bound.
+  do 4! rewrite getvD /= ?size_eq1 ?size_eq2 //=.
+  apply addrA.
+- rewrite (size_addv_neq _ v3) //= eq_sym.
+  apply emptyv_unique.
+  by rewrite 2!size_addv size_eq1 size_eq2.
+- move => size_neq.
+  rewrite (size_addv_neq v1 v2) //=.
+  apply emptyv_unique.
+  rewrite 2!size_addv.
+  case (size v2 = size v3) => _. 
+  + by rewrite size_neq.
+  + by case (size v1 = 0).
 qed.
 
 lemma addvC: commutative Vectors.(+).
 proof.
 move => v1 v2.
-case (size v1 = size v2) => size_eq. apply eq_vectorP. rewrite size_addv.
-do! rewrite size_eq /=.
-move => i bound. rewrite !getvD ?size_eq //.
-by apply addrC.
-rewrite !size_addv_neq // eq_sym //.
+case (size v1 = size v2) => size_eq. 
+- apply eq_vectorP. 
+  rewrite size_addv.
+  do! rewrite size_eq /=.
+  move => i bound. 
+  rewrite !getvD ?size_eq //.
+  by apply addrC.
+- by rewrite !size_addv_neq // eq_sym.
 qed.
 
 lemma add0v v: zerov (size v) + v = v.
-rewrite eq_vectorP size_addv /= => i bound. rewrite getvD //= add0r //.
+proof.
+rewrite eq_vectorP size_addv /= => i bound. 
+by rewrite getvD //= add0r.
 qed.
 
 hint simplify add0v.
@@ -248,34 +270,32 @@ abbrev (-) v1 v2 = v1 + (-v2).
 
 lemma addNv v: v - v = zerov (size v).
 proof.
-rewrite eq_vectorP size_addv /= => i bound. rewrite getvD //= addrN //.
+rewrite eq_vectorP size_addv /= => i bound. 
+by rewrite getvD //= addrN.
 qed.
 
 hint simplify addv0.
 
 lemma oppvD (v1 v2: vector): -(v1 + v2) = -v1 + -v2.
 proof.
-case (size v1 = size v2).
-move => eq_size.
-rewrite eq_vectorP; split.
-rewrite sizeN size_addv eq_size /=.
-rewrite eq_size //=.
-move => i bound.
-rewrite getvN getvD.
-rewrite eq_size //=.
-rewrite getvD.
-rewrite 2!sizeN eq_size //=.
-by rewrite opprD 2!getvN.
-move => neq_size.
-by do 2! (rewrite size_addv_neq //).
+case (size v1 = size v2) => [eq_size | neq_size].
+- rewrite eq_vectorP.
+  split => [|i bound].
+  + by rewrite sizeN size_addv eq_size /= eq_size.
+  rewrite getvN getvD.
+  + by rewrite eq_size.
+  rewrite getvD.
+  + by rewrite 2!sizeN eq_size.
+  by rewrite opprD 2!getvN.
+- do 2! (rewrite size_addv_neq //).
 qed.
 
 lemma oppvK (v: vector): - (- v) = v.
 proof.
-rewrite eq_vectorP. split.
-rewrite 2!sizeN //=.
-move => i bound.
-by rewrite 2!getvN opprK.
+rewrite eq_vectorP. 
+split => [|i bound].
+- by rewrite 2!sizeN.
+- by rewrite 2!getvN opprK.
 qed.
 
 (* Inner product *)
@@ -284,38 +304,41 @@ op dotp (v1 v2 : vector) = if size v1 = size v2 then
 
 lemma dotp_size_diff (v1 v2: vector): size v1 <> size v2 =>
     dotp v1 v2 = zeror.
-by smt(). qed.
+proof.
+by rewrite /dotp => ->.
+qed.
 
 lemma dotpC : commutative dotp.
 proof.
-move => v1 v2. case (size v1 = size v2) => size_eq.
-rewrite /dotp size_eq /=. 
-apply eq_bigr => /= i _. by rewrite mulrC.
-rewrite /dotp size_eq //= (eq_sym (size v2)) size_eq //. 
+move => v1 v2. 
+case (size v1 = size v2) => [size_eq | size_neq].
+- rewrite /dotp size_eq /=. 
+  apply eq_bigr => /= i _. 
+  by rewrite mulrC.
+- by rewrite /dotp size_neq //= (eq_sym (size v2)) size_neq. 
 qed.
 
 lemma dotpNv v1 v2: dotp (-v1) v2 = - dotp v1 v2.
 proof.
 rewrite /dotp /=.
 case (size v1 = size v2) => _. 
-rewrite sumrN.
-congr.
-apply fun_ext => i /=. rewrite mulNr //.
-rewrite oppr0 //. 
+- rewrite sumrN.
+  apply eq_bigr => /= i _.
+  by rewrite mulNr.
+- by rewrite oppr0. 
 qed.
 
 hint simplify dotpNv.
 
 lemma dotpDr v1 v2 v3 : size v2 = size v3 => dotp v1 (v2 + v3) = dotp v1 v2 + dotp v1 v3.
 proof.
-move => size_eq1.
+move => size_eq_v2v3.
 rewrite /dotp.
-case (size v1 = size v2) => size_eq2.
-rewrite size_addv size_eq2 size_eq1 /=.
-rewrite -big_split /=. 
-congr. apply fun_ext => i.
-rewrite getvD // mulrDr //.
-rewrite size_addv // -size_eq1 /= size_eq2 /= addr0 //.
+case (size v1 = size v2) => [size_eq_v1v2 | size_neq_v1v2].
+- rewrite size_addv size_eq_v1v2 size_eq_v2v3 /= -big_split /=. 
+  apply eq_bigr => /= i _.  
+  by rewrite getvD // mulrDr.
+- by rewrite size_addv -size_eq_v2v3 /= size_neq_v1v2 /= addr0.
 qed.
 
 lemma dotpDl v1 v2 v3 : size v1 = size v2 => dotp (v1 + v2) v3 = dotp v1 v3 + dotp v2 v3.
@@ -326,12 +349,13 @@ qed.
 
 lemma dotp0r v n: dotp (zerov n) v = zeror.
 proof.
-case (size (zerov n) = size v) => size_eq.
-rewrite /dotp size_eq /=.
-have ->: (fun (i : int) => zeror * v.[i]) = fun (_: int) => zeror.
-apply fun_ext => i. rewrite mul0r //.
-rewrite big1_eq //.
-rewrite /dotp size_eq //.
+case (size (zerov n) = size v) => [size_eq | size_neq].
+- rewrite /dotp size_eq /=.
+  have ->: (fun (i : int) => zeror * v.[i]) = fun (_: int) => zeror.
+  + apply fun_ext => i. 
+    apply mul0r.
+  apply big1_eq.
+by rewrite /dotp size_neq.
 qed.
 
 hint simplify dotp0r.
@@ -353,8 +377,9 @@ lemma concatE (v1 v2: vector) i: (v1 || v2).[i] = v1.[i] + v2.[i-size v1].
 proof.
 rewrite /(||).
 case (0 <= i < size v1 + size v2) => range.
-rewrite offunvE //=.
-rewrite !getv0E ?size_offunv //; rewrite ?addr0 //#. 
+- rewrite offunvE //=.
+- do 3! (rewrite getv0E; first smt()).
+  by rewrite addr0. 
 qed.
 
 hint simplify size_concat, concatE.
@@ -363,22 +388,26 @@ lemma dotp_concat v1 v2 v3 v4: size v1 = size v3 => size v2 = size v4 =>
   dotp (v1 || v2) (v3 || v4) = (dotp v1 v3) + (dotp v2 v4).
 proof.
 move => size_eq1 size_eq2.
-rewrite /dotp !size_concat size_eq1 size_eq2 /=.
-rewrite (range_cat (size v3)). apply size_ge0. smt().
+rewrite /dotp !size_concat size_eq1 size_eq2 /= (range_cat (size v3)). 
+- apply size_ge0. 
+- smt().
 rewrite big_cat.
 congr.
-apply eq_big_seq => i bound /=.
-rewrite mem_range in bound.
-rewrite /= (getv0E v2). smt().
-rewrite addr0.
-rewrite (getv0E v4). smt().
-rewrite addr0 //.
+- apply eq_big_seq => i bound /=.
+  rewrite mem_range in bound.
+  rewrite (getv0E v2). 
+  + smt().
+  rewrite addr0 (getv0E v4). 
+  + smt().
+  by rewrite addr0.
 rewrite (big_addn 0 (size v3 + size v4) (size v3)) addzAC /=.
 apply eq_big_seq => i bound /=.
 rewrite mem_range in bound.
-rewrite /= size_eq1 -!Ring.IntID.addrA /= (getv0E v1). smt().
-rewrite add0r (getv0E v3). smt().
-rewrite add0r //.
+rewrite /= size_eq1 -!Ring.IntID.addrA /= (getv0E v1). 
+- smt().
+rewrite add0r (getv0E v3). 
+- smt().
+by rewrite add0r.
 qed.
 
 lemma addv_concat (v1 v2 v3 v4: vector): 
@@ -388,13 +417,15 @@ proof.
 move => size_eq1 size_eq2.
 apply eq_vectorP.
 rewrite size_addv 3!size_concat size_eq1 size_eq2 /= size_eq1 size_eq2 /= => i bound.
-rewrite getvD /=. smt().
-do 2! rewrite getvD //. 
+rewrite getvD /=. 
+- smt().
+do 2! (rewrite getvD; first done).
+rewrite size_eq1. (* This should be solvable by algebra *)
 rewrite 2!addrA.
 congr.
 rewrite -2!addrA.
 congr.
-rewrite addrC. algebra.
+apply addrC.
 qed.
 
 lemma negv_concat (v1 v2: vector): - (v1 || v2) = (-v1 || -v2).
@@ -406,78 +437,76 @@ qed.
 (* splitting apart vectors *)
 op subv (v: vector) (n m: int) = offunv ((fun i => v.[i+n]), m - n).
 
-lemma size_subv (v: vector) (n m: int): size (subv v n m) = max 0 (m - n).
-proof. 
-rewrite /subv size_offunv //. 
-qed.
+lemma size_subv (v: vector) (n m: int): size (subv v n m) = max 0 (m - n) by done.
 
 hint simplify size_subv.
 
 lemma subvE (v: vector) (n m i: int): 0 <= i < m - n => (subv v n m).[i] = v.[i+n].
 proof.
 move => i_range.
-rewrite /subv offunvE //=. 
+by rewrite /subv offunvE. 
 qed.
 
-(* interactions between subv and concatenation *)
+(* Interactions between subv and concatenation *)
 lemma subv_concatCl v1 v2: subv (v1 || v2) 0 (size v1) = v1.
 proof.
 rewrite eq_vectorP size_subv /= => i bound.
-rewrite subvE // concatE /= (getv0E v2) /=. smt().
-rewrite addr0 //.
+rewrite subvE // concatE /= (getv0E v2). 
+- smt().
+apply addr0.
 qed.
 
 lemma subv_concatCr v1 v2: subv (v1 || v2) (size v1) (size v1 + size v2) = v2.
 proof.
-rewrite eq_vectorP size_subv. split. smt().
-move => i bound.
-rewrite subvE //. smt().
-rewrite concatE (getv0E v1) /=. smt().
-rewrite add0r //.
-by algebra.
+rewrite eq_vectorP size_subv. 
+split => [|i bound].
+- smt().
+rewrite subvE.
+- smt().
+rewrite concatE (getv0E v1). 
+- smt().
+rewrite add0r.
+algebra.
 qed.
 
 lemma concat_subvC v i: 0 <= i <= size v => (subv v 0 i || subv v i (size v)) = v.
 proof.
 move => i_bound.
 rewrite eq_vectorP.
-rewrite size_concat !size_subv //=. 
-split. smt().
-move => k k_bound.
-case (k < i) => i_k_bound.
-rewrite (getv0E (subv _ i _)).
-smt().
-rewrite addr0 subvE //#.
-rewrite (getv0E (subv _ 0 _)) /=. smt().
-rewrite add0r subvE /#.
+rewrite size_concat !size_subv /=. 
+split => [|k k_bound]. 
+- smt().
+case (k < i) => lti_k.
+- rewrite (getv0E (subv _ i _)).
+  + smt().
+  rewrite addr0 subvE /#.
+- rewrite (getv0E (subv _ 0 _)) /=. 
+  + smt().
+  rewrite add0r subvE /#.
 qed.
  
-(* updating one entry in a vector *)
-op updv (v: vector) (n: int) (m: t) =
-  let a = offunv (fun i => m - v.[n], 1) in
-  offunv (fun i => v.[i] + a.[i-n], size v).
-
-lemma size_updv (v: vector) (n: int) (m: t): size (updv v n m) = size v by done.
-
-lemma updvE (v: vector) (n i: int) (m: t): (0 <= n < size v) => (0 <= i < size v) =>
-    (updv v n m).[i] = if i = n then m else v.[i].
-proof.
-move => ninv iinv.
-rewrite /updv.
-case (i = n) => /= idx_eq.
-rewrite idx_eq offunvE //= offunvE //= addrC.
-by rewrite subrK.
-rewrite offunvE //= offunv0E //=. smt(leqn0).
-apply addr0.
-qed.
-
-lemma subv_addv v1 v2 a b: size v1 = size v2 => subv (v1 + v2) a b  = subv v1 a b + subv v2 a b.
+lemma subv_addv v1 v2 a b: size v1 = size v2 => 
+    subv (v1 + v2) a b  = subv v1 a b + subv v2 a b.
 proof.
 move => size_eq.
 rewrite eq_vectorP => /= i bound.
-rewrite subvE. smt().
+rewrite subvE. 
+- smt().
 do 2! (rewrite getvD; first done).
 by do 2! (rewrite subvE; first smt()).
+qed.
+
+(* Updating one entry in a vector *)
+op updv (v: vector) (n: int) (m: t) =
+  offunv (fun i => if i = n then m else v.[i], size v).
+
+lemma size_updv (v: vector) (n: int) (m: t): size (updv v n m) = size v by done.
+
+lemma updvE (v: vector) (n i: int) (m: t): (0 <= i < size v) =>
+    (updv v n m).[i] = if i = n then m else v.[i].
+proof.
+rewrite /updv => i_bound.
+by rewrite offunvE.
 qed.
 
 end Vectors.
@@ -518,7 +547,7 @@ have ->: pi (mclamp (repr m)) = pi (repr m) by rewrite -eqv_pi /eqv.
 apply reprK.
 qed.
 
-lemma offunmK pm: tofunm (offunm pm) = mclamp pm by rewrite /tofunm /offunm eqv_repr //.
+lemma offunmK pm: tofunm (offunm pm) = mclamp pm by rewrite /tofunm /offunm eqv_repr.
 
 hint simplify offunmK.
 
@@ -566,7 +595,9 @@ lemma nosmt getm0E (m : matrix) (i j : int) : !mrange m i j => m.[i, j] = zeror 
 lemma offunm0E f r c (i j: int) : !(0 <= i < r /\ 0 <= j < c) =>
     (offunm (f, r, c)).[i, j] = zeror.
 proof.
-move => idx_out. rewrite getm0E /=. by smt(max0size). trivial.
+move => idx_out. 
+rewrite getm0E //=. 
+smt().
 qed.
     
 lemma eq_matrixP (m1 m2 : matrix) :
@@ -574,12 +605,13 @@ lemma eq_matrixP (m1 m2 : matrix) :
 proof. 
 split=> [->//|eq_mi]. 
 rewrite /"_.[_]" /= in eq_mi.
-have: tofunm m1 = tofunm m2 by rewrite /tofunm /mclamp /#. smt(tofunmK).
+have: tofunm m1 = tofunm m2 by rewrite /tofunm /mclamp /#. 
+smt(tofunmK).
 qed.
 
 (* Special matrices *)
 
-(* constant valued matrix with r rows and c columns *)
+(* Constant valued matrix with r rows and c columns *)
 op matrixc (rows cols: int) (c : R) = offunm ((fun _ _ => c), rows, cols).
 
 lemma nosmt rows_matrixc cst r c: rows (matrixc r c cst) = max 0 r by done.
@@ -592,10 +624,11 @@ lemma nosmt size_matrixc cst r c: size (matrixc r c cst) = (max 0 r, max 0 c) by
 
 lemma matrixcE cst c r i j: mrange (matrixc r c cst) i j => (matrixc r c cst).[i, j] = cst. 
 proof.
-rewrite /matrixc => H. by apply offunmE.
+rewrite /matrixc => H. 
+by apply offunmE.
 qed.
 
-(* matrix with the values of v on the diagonal and zeror off the diagonal *)
+(* Matrix with the values of v on the diagonal and zeror off the diagonal *)
 op diagmx (v : vector) =
   offunm ((fun i j => if i = j then v.[i] else zeror), size v, size v).
 
@@ -609,24 +642,24 @@ lemma size_diagmx v: size (diagmx v) = (size v, size v) by done.
 
 lemma diagmxE v i j: (diagmx v).[i, j] = if i = j then v.[i] else zeror.
 proof. 
-case (mrange (diagmx v) i j) => /= bound.
-rewrite offunmE //.
-rewrite getm0E //=.
-case (i = j) => eq //.
-rewrite getv0E /#.
+case (mrange (diagmx v) i j) => /= [[i_bound j_bound] | not_bound].
+- by rewrite offunmE.
+- rewrite getm0E //.
+  case (i = j) => [idx_eq | //].
+  rewrite getv0E /#.
 qed.
 
 hint simplify diagmxE.
 
-(* matrix with constant values on the diagonal *)
+(* Matrix with constant values on the diagonal *)
 abbrev diagc n (c : R) = diagmx (vectc n c).
 
 lemma diagcE n c i j: (diagc n c).[i, j] = if i = j /\ 0 <= i < n then c else zeror.
 proof. 
-case (i = j) => /= idx_eq. rewrite idx_eq /=. case (0 <= j < n) => H. 
-by rewrite vectcE.
-apply getv0E => /= /#.
-by rewrite idx_eq.
+case (i = j) => /= -> //=. 
+case (0 <= j < n) => j_bound. 
+- by rewrite vectcE.
+- apply getv0E => /= /#.
 qed.
 
 hint simplify diagcE.
@@ -634,14 +667,30 @@ hint simplify diagcE.
 (* n by n identity matrix *)
 abbrev onem n = diagc n oner.
 
+lemma offun1E i j n: mrange (onem n) i j => (onem n).[i, j] =
+  if i = j then oner else zeror.
+proof. 
+rewrite diagcE => bound.
+suff: (0 <= i < n) by move => ->.
+rewrite rows_diagmx cols_diagmx /= in bound.
+smt().
+qed.
+
+
+lemma offun1_neqE i j n: i <> j => (onem n).[i, j] = zeror.
+proof. 
+move=> ne_ij. 
+by rewrite diagmxE ne_ij. 
+qed.
+
 (* r by c zero matrix*)
 abbrev zerom r c  = matrixc r c zeror.
 
 lemma zeromE r c i j: (zerom r c).[i, j] = zeror. 
 proof.
 case (mrange (zerom r c) i j) => range.
-by rewrite matrixcE.
-by rewrite getm0E.
+- by rewrite matrixcE.
+- by rewrite getm0E.
 qed.
 
 hint simplify zeromE.
@@ -661,41 +710,35 @@ hint simplify rows_emptym, cols_emptym, emptymE.
 
 lemma emptym_unique m: size m = (0, 0) => m = emptym.
 proof. 
-move => H. apply eq_matrixP => /#.
+move => [rows_m cols_m]. 
+apply eq_matrixP => /=. 
+rewrite rows_m cols_m /= => i j.
+smt().
 qed.
 
-(*
-lemma offun1E i j n: mrange (onem n) i j => (onem n).[i, j] =
-  if i = j then oner else zeror.
-proof. simplify.
-case (0 < n). rewrite diag_rows diag_cols vectc_size /max. move => H. 
-rewrite H /=.
-move => rg; rewrite diagmxE offunvE //=. by elim rg.
-move => H. 
-move => bound. rewrite offunmE //=.
-case (i = j) => eq //. rewrite offunvE //=. elim bound.
-rewrite diag_rows diag_cols /diagmx vectc_size /max H //= empty_interv //.
-qed.
-
-
-lemma offun1_neqE i j n: i <> j => (onem n).[i, j] = zeror.
-proof. move=> ne_ij. by rewrite diagmxE ne_ij. qed.
-*)
-
-(* matrix addition *)
+(* Matrix addition *)
 op (+) (m1 m2 : matrix) = if size m1 = size m2 then 
   offunm (fun i j => m1.[i, j] + m2.[i, j], rows m1, cols m1) else emptym.
 
 lemma size_addm_diff (m1 m2: matrix): size m1 <> size m2 => m1 + m2 = emptym by smt().
 
 lemma rows_addm (m1 m2: matrix): size m1 = size m2 => rows (m1 + m2) = rows m1.
-proof. rewrite /(+) //= => -> //. qed.
+proof. 
+by rewrite /(+) => ->. 
+qed.
 
 lemma cols_addm (m1 m2: matrix): size m1 = size m2 => cols (m1 + m2) = cols m1.
-proof. rewrite /(+) //= => -> //. qed.
+proof. 
+by rewrite /(+) => ->. 
+qed.
 
 lemma size_addm (m1 m2: matrix): size m1 = size m2 => size (m1 + m2) = size m1.
-proof. move => H. congr. rewrite rows_addm //. rewrite cols_addm //. qed.
+proof. 
+move => size_eq. 
+split. 
+- by rewrite rows_addm. 
+- by rewrite cols_addm. 
+qed.
 
 lemma add_emptyR (m: matrix): m + emptym = emptym.
 proof. 
